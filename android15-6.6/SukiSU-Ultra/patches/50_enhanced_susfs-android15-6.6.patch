@@ -649,7 +649,7 @@ diff -ruN clean/fs/namespace.c work/fs/namespace.c
 +#endif // #ifdef CONFIG_KSU_SUSFS_SUS_MOUNT
  #include "pnode.h"
  #include "internal.h"
-@@ -41,2 +44,11 @@
+@@ -41,3 +44,12 @@
 +#ifdef CONFIG_KSU_SUSFS_SUS_MOUNT
 +extern bool susfs_is_current_ksu_domain(void);
 +extern bool susfs_is_sdcard_android_data_decrypted __read_mostly;
@@ -2004,7 +2004,7 @@ diff -ruN clean/fs/statfs.c work/fs/statfs.c
 diff -ruN clean/fs/susfs.c work/fs/susfs.c
 --- a/fs/susfs.c	1970-01-01 01:00:00.000000000 +0100
 +++ b/fs/susfs.c	2026-03-01 02:05:07.389658030 +0100
-@@ -0,0 +1,1257 @@
+@@ -0,0 +1,1470 @@
 +#include <linux/version.h>
 +#include <linux/cred.h>
 +#include <linux/fs.h>
@@ -2108,13 +2108,61 @@ diff -ruN clean/fs/susfs.c work/fs/susfs.c
 +			goto out_path_put_path;
 +		}
 +		set_bit(AS_FLAGS_SUS_PATH, &fi->inode.i_mapping->flags);
-+		SUSFS_LOGI("flagged AS_FLAGS_SUS_PATH on pathname: '%s', fi->nodeid: %llu, fi->inode.i_ino: %lu, fi->inode.i_mapping->flags: 0x%lx\n", 
++		{
++			struct susfs_hidden_ino_entry *new_entry;
++			struct susfs_hidden_ino_entry *existing;
++			bool found = false;
++
++			rcu_read_lock();
++			hash_for_each_possible_rcu(HIDDEN_INO_HLIST, existing, node, fi->inode.i_ino) {
++				if (existing->ino == fi->inode.i_ino && existing->sb == fi->inode.i_sb) {
++					found = true;
++					break;
++				}
++			}
++			rcu_read_unlock();
++			if (!found) {
++				new_entry = kmalloc(sizeof(*new_entry), GFP_KERNEL);
++				if (new_entry) {
++					new_entry->ino = fi->inode.i_ino;
++					new_entry->sb = fi->inode.i_sb;
++					spin_lock(&susfs_hidden_inos_lock);
++					hash_add_rcu(HIDDEN_INO_HLIST, &new_entry->node, fi->inode.i_ino);
++					spin_unlock(&susfs_hidden_inos_lock);
++				}
++			}
++		}
++		SUSFS_LOGI("flagged AS_FLAGS_SUS_PATH on pathname: '%s', fi->nodeid: %llu, fi->inode.i_ino: %lu, fi->inode.i_mapping->flags: 0x%lx\n",
 +					info.target_pathname, fi->nodeid, fi->inode.i_ino, fi->inode.i_mapping->flags);
 +		info.err = 0;
 +		goto out_path_put_path;
 +	}
 +
 +	set_bit(AS_FLAGS_SUS_PATH, &inode->i_mapping->flags);
++	{
++		struct susfs_hidden_ino_entry *new_entry;
++		struct susfs_hidden_ino_entry *existing;
++		bool found = false;
++
++		rcu_read_lock();
++		hash_for_each_possible_rcu(HIDDEN_INO_HLIST, existing, node, inode->i_ino) {
++			if (existing->ino == inode->i_ino && existing->sb == inode->i_sb) {
++				found = true;
++				break;
++			}
++		}
++		rcu_read_unlock();
++		if (!found) {
++			new_entry = kmalloc(sizeof(*new_entry), GFP_KERNEL);
++			if (new_entry) {
++				new_entry->ino = inode->i_ino;
++				new_entry->sb = inode->i_sb;
++				spin_lock(&susfs_hidden_inos_lock);
++				hash_add_rcu(HIDDEN_INO_HLIST, &new_entry->node, inode->i_ino);
++				spin_unlock(&susfs_hidden_inos_lock);
++			}
++		}
++	}
 +	SUSFS_LOGI("flagged AS_FLAGS_SUS_PATH on pathname: '%s', ino: '%lu', inode->i_mapping->flags: 0x%lx\n",
 +				info.target_pathname, info.target_ino, inode->i_mapping->flags);
 +	info.err = 0;
@@ -2124,6 +2172,8 @@ diff -ruN clean/fs/susfs.c work/fs/susfs.c
 +	if (copy_to_user(&((struct st_susfs_sus_path __user*)*user_info)->err, &info.err, sizeof(info.err))) {
 +		info.err = -EFAULT;
 +	}
++	if (!info.err)
++		susfs_try_register_hidden_name(info.target_pathname);
 +	SUSFS_LOGI("CMD_SUSFS_ADD_SUS_PATH -> ret: %d\n", info.err);
 +}
 +
@@ -2182,8 +2232,56 @@ diff -ruN clean/fs/susfs.c work/fs/susfs.c
 +					continue;
 +				}
 +				set_bit(AS_FLAGS_SUS_PATH, &fi->inode.i_mapping->flags);
++				{
++					struct susfs_hidden_ino_entry *new_entry;
++					struct susfs_hidden_ino_entry *existing;
++					bool found = false;
++
++					rcu_read_lock();
++					hash_for_each_possible_rcu(HIDDEN_INO_HLIST, existing, node, fi->inode.i_ino) {
++						if (existing->ino == fi->inode.i_ino && existing->sb == fi->inode.i_sb) {
++							found = true;
++							break;
++						}
++					}
++					rcu_read_unlock();
++					if (!found) {
++						new_entry = kmalloc(sizeof(*new_entry), GFP_KERNEL);
++						if (new_entry) {
++							new_entry->ino = fi->inode.i_ino;
++							new_entry->sb = fi->inode.i_sb;
++							spin_lock(&susfs_hidden_inos_lock);
++							hash_add_rcu(HIDDEN_INO_HLIST, &new_entry->node, fi->inode.i_ino);
++							spin_unlock(&susfs_hidden_inos_lock);
++						}
++					}
++				}
 +			} else {
 +				set_bit(AS_FLAGS_SUS_PATH, &inode->i_mapping->flags);
++				{
++					struct susfs_hidden_ino_entry *new_entry;
++					struct susfs_hidden_ino_entry *existing;
++					bool found = false;
++
++					rcu_read_lock();
++					hash_for_each_possible_rcu(HIDDEN_INO_HLIST, existing, node, inode->i_ino) {
++						if (existing->ino == inode->i_ino && existing->sb == inode->i_sb) {
++							found = true;
++							break;
++						}
++					}
++					rcu_read_unlock();
++					if (!found) {
++						new_entry = kmalloc(sizeof(*new_entry), GFP_KERNEL);
++						if (new_entry) {
++							new_entry->ino = inode->i_ino;
++							new_entry->sb = inode->i_sb;
++							spin_lock(&susfs_hidden_inos_lock);
++							hash_add_rcu(HIDDEN_INO_HLIST, &new_entry->node, inode->i_ino);
++							spin_unlock(&susfs_hidden_inos_lock);
++						}
++					}
++				}
 +			}
 +			path_put(&path);
 +			SUSFS_LOGI("re-flag AS_FLAGS_SUS_PATH on path '%s' for uid: %u\n", cursor->target_pathname, uid);
@@ -2202,6 +2300,8 @@ diff -ruN clean/fs/susfs.c work/fs/susfs.c
 +	if (current_uid().val < 10000 || !susfs_is_current_proc_umounted()) {
 +		return false;
 +	}
++	if (!inode->i_ino)
++		return false;
 +	if (inode->i_sb->s_magic == FUSE_SUPER_MAGIC) {
 +		fi = get_fuse_inode(inode);
 +		if (!fi) {
@@ -2228,6 +2328,8 @@ diff -ruN clean/fs/susfs.c work/fs/susfs.c
 +	if (current_uid().val < 10000 || !susfs_is_current_proc_umounted()) {
 +		return false;
 +	}
++	if (!inode->i_ino)
++		return false;
 +	if (inode->i_sb->s_magic == FUSE_SUPER_MAGIC) {
 +		fi = get_fuse_inode(inode);
 +		if (!fi) {
@@ -2254,6 +2356,8 @@ diff -ruN clean/fs/susfs.c work/fs/susfs.c
 +	if (current_uid().val < 10000 || !susfs_is_current_proc_umounted()) {
 +		return false;
 +	}
++	if (!inode->i_ino)
++		return false;
 +	if (inode->i_sb->s_magic == FUSE_SUPER_MAGIC) {
 +		fi = get_fuse_inode(inode);
 +		if (!fi) {
@@ -3140,6 +3244,7 @@ diff -ruN clean/fs/susfs.c work/fs/susfs.c
 +};
 +
 +static DEFINE_HASHTABLE(HIDDEN_INO_HLIST, 10);
++static DEFINE_SPINLOCK(susfs_hidden_inos_lock);
 +
 +bool susfs_is_hidden_ino(struct super_block *sb, unsigned long ino) {
 +	struct susfs_hidden_ino_entry *entry;
@@ -3166,6 +3271,7 @@ diff -ruN clean/fs/susfs.c work/fs/susfs.c
 +};
 +
 +static DEFINE_HASHTABLE(HIDDEN_NAME_HLIST, 8);
++static DEFINE_SPINLOCK(susfs_hidden_names_lock);
 +
 +static u32 susfs_name_hash(const char *name, int namlen) {
 +	u32 hash = 0;
@@ -3180,6 +3286,9 @@ diff -ruN clean/fs/susfs.c work/fs/susfs.c
 +	u32 hash;
 +
 +	if (!name || namlen <= 0)
++		return false;
++
++	if (!caller_uid)
 +		return false;
 +
 +	hash = susfs_name_hash(name, namlen);
@@ -3198,53 +3307,157 @@ diff -ruN clean/fs/susfs.c work/fs/susfs.c
 +}
 +EXPORT_SYMBOL(susfs_is_hidden_name);
 +
-+#ifdef CONFIG_KSU_SUSFS_UNICODE_FILTER
-+bool susfs_check_unicode_bypass(const char __user *filename) {
-+	char buf[256];
-+	int i, len;
-+	unsigned char c;
-+	uid_t uid = current_uid().val;
++static void susfs_add_hidden_name(const char *name, int namlen, uid_t owner_uid)
++{
++	struct susfs_hidden_name_entry *entry;
++	u32 key = susfs_name_hash(name, namlen);
 +
++	rcu_read_lock();
++	hash_for_each_possible_rcu(HIDDEN_NAME_HLIST, entry, node, key) {
++		if (entry->namlen == namlen &&
++		    !memcmp(entry->name, name, namlen)) {
++			rcu_read_unlock();
++			return;
++		}
++	}
++	rcu_read_unlock();
++
++	entry = kmalloc(sizeof(*entry), GFP_KERNEL);
++	if (!entry)
++		return;
++	memcpy(entry->name, name, namlen);
++	entry->name[namlen] = '\0';
++	entry->namlen = namlen;
++	entry->owner_uid = owner_uid;
++	spin_lock(&susfs_hidden_names_lock);
++	hash_add_rcu(HIDDEN_NAME_HLIST, &entry->node, key);
++	spin_unlock(&susfs_hidden_names_lock);
++}
++
++static void susfs_try_register_hidden_name(const char *pathname)
++{
++	const char *prefix;
++	const char *basename;
++	int namlen;
++	uid_t owner_uid = 0;
++	struct path data_path;
++	char lookup_buf[256];
++
++	prefix = strstr(pathname, "/Android/data/");
++	if (prefix) {
++		basename = prefix + 14;
++	} else {
++		prefix = strstr(pathname, "/Android/obb/");
++		if (!prefix)
++			return;
++		basename = prefix + 13;
++	}
++	if (!*basename)
++		return;
++	namlen = 0;
++	while (basename[namlen] && basename[namlen] != '/')
++		namlen++;
++	if (namlen <= 0 || namlen >= 240)
++		return;
++	if (basename[0] == '.' && (namlen == 1 || (namlen == 2 && basename[1] == '.')))
++		return;
++	snprintf(lookup_buf, sizeof(lookup_buf), "/data/data/%.*s", namlen, basename);
++	if (!kern_path(lookup_buf, LOOKUP_FOLLOW, &data_path)) {
++		struct inode *di = d_backing_inode(data_path.dentry);
++		if (di)
++			owner_uid = di->i_uid.val;
++		path_put(&data_path);
++	}
++	susfs_add_hidden_name(basename, namlen, owner_uid);
++}
++
++#ifdef CONFIG_KSU_SUSFS_UNICODE_FILTER
++static bool has_suspicious_unicode(const char *path, long len)
++{
++	long i = 0;
++	while (i < len) {
++		unsigned char c = (unsigned char)path[i];
++
++		if (likely(c < 0x80)) {
++			i++;
++			continue;
++		}
++
++		if (c == 0xC2 && i + 1 < len && path[i+1] == (char)0xAD)
++			return true;
++		if (c == 0xCD && i + 1 < len && path[i+1] == (char)0x8F)
++			return true;
++		if (c == 0xD8 && i + 1 < len && path[i+1] == (char)0x9C)
++			return true;
++
++		if (c == 0xE1 && i + 2 < len) {
++			if (path[i+1] == (char)0x85 &&
++			    ((unsigned char)path[i+2] == 0x9F || (unsigned char)path[i+2] == 0xA0))
++				return true;
++			if (path[i+1] == (char)0x9E &&
++			    ((unsigned char)path[i+2] == 0xB4 || (unsigned char)path[i+2] == 0xB5))
++				return true;
++			if (path[i+1] == (char)0xA0 &&
++			    (unsigned char)path[i+2] >= 0x8B && (unsigned char)path[i+2] <= 0x8E)
++				return true;
++		}
++
++		if (c == 0xE2 && i + 2 < len) {
++			if (path[i+1] == (char)0x80 &&
++			    (unsigned char)path[i+2] >= 0x8A && (unsigned char)path[i+2] <= 0x8F)
++				return true;
++			if (path[i+1] == (char)0x80 &&
++			    (unsigned char)path[i+2] >= 0xAA && (unsigned char)path[i+2] <= 0xAE)
++				return true;
++			if (path[i+1] == (char)0x81 &&
++			    (unsigned char)path[i+2] >= 0xA0 && (unsigned char)path[i+2] <= 0xAF)
++				return true;
++		}
++
++		if (c == 0xE3 && i + 2 < len &&
++		    path[i+1] == (char)0x85 && path[i+2] == (char)0xA4)
++			return true;
++
++		if (c == 0xEF && i + 2 < len) {
++			if (path[i+1] == (char)0xBB && path[i+2] == (char)0xBF)
++				return true;
++			if (path[i+1] == (char)0xB8 &&
++			    (unsigned char)path[i+2] >= 0x80 && (unsigned char)path[i+2] <= 0x8F)
++				return true;
++			if (path[i+1] == (char)0xBE && path[i+2] == (char)0xA0)
++				return true;
++			if (path[i+1] == (char)0xBF &&
++			    (unsigned char)path[i+2] >= 0xB0 && (unsigned char)path[i+2] <= 0xB8)
++				return true;
++		}
++
++		if (c < 0xE0) i += 2;
++		else if (c < 0xF0) i += 3;
++		else i += 4;
++	}
++	return false;
++}
++
++bool susfs_check_unicode_bypass(const char __user *filename)
++{
++	char buf[NAME_MAX + 1];
++	unsigned int uid;
++	long len;
++
++	if (!filename)
++		return false;
++
++	uid = current_uid().val;
 +	if (uid == 0 || uid == 1000)
 +		return false;
 +
-+	len = strncpy_from_user(buf, filename, sizeof(buf));
-+	if (len <= 0 || len >= sizeof(buf))
++	len = strncpy_from_user(buf, filename, NAME_MAX);
++	if (len <= 0)
 +		return false;
 +
-+	for (i = 0; i < len; i++) {
-+		c = (unsigned char)buf[i];
-+		if (c < 0x80)
-+			continue;
-+		if (i + 2 < len) {
-+			unsigned char c1 = (unsigned char)buf[i+1];
-+			unsigned char c2 = (unsigned char)buf[i+2];
-+			/* RTL/LTR override (U+202E, U+202D) */
-+			if (c == 0xE2 && c1 == 0x80 && (c2 == 0xAE || c2 == 0xAD)) {
-+				SUSFS_LOGI("unicode bypass blocked (RTL/LTR override) uid=%u\n", uid);
-+				return true;
-+			}
-+			/* zero-width space (U+200B), ZWNJ (U+200C), ZWJ (U+200D) */
-+			if (c == 0xE2 && c1 == 0x80 && (c2 >= 0x8B && c2 <= 0x8D)) {
-+				SUSFS_LOGI("unicode bypass blocked (zero-width) uid=%u\n", uid);
-+				return true;
-+			}
-+			/* BOM (U+FEFF) */
-+			if (c == 0xEF && c1 == 0xBB && c2 == 0xBF) {
-+				SUSFS_LOGI("unicode bypass blocked (BOM) uid=%u\n", uid);
-+				return true;
-+			}
-+		}
-+		/* Cyrillic ranges (U+0400-U+04FF → 0xD0-0xD1 lead byte) */
-+		if (c == 0xD0 || c == 0xD1) {
-+			SUSFS_LOGI("unicode bypass blocked (Cyrillic) uid=%u\n", uid);
-+			return true;
-+		}
-+		/* Diacritical marks (U+0300-U+036F → 0xCC-0xCD lead byte) */
-+		if (c == 0xCC || c == 0xCD) {
-+			SUSFS_LOGI("unicode bypass blocked (diacritical) uid=%u\n", uid);
-+			return true;
-+		}
++	if (has_suspicious_unicode(buf, len)) {
++		SUSFS_LOGI("unicode: blocked suspicious codepoint uid=%u\n", uid);
++		return true;
 +	}
 +	return false;
 +}
