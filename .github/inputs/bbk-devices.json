@@ -9,7 +9,7 @@
     "build_method": "perf",
     "manifest_repo": "OnePlusOSS/kernel_manifest",
     "manifest_branch": "oneplus/sm8850",
-    "hmbird": true,
+    "hmbird": false,
     "extra_artifacts": [
       "dtbo.img",
       "system_dlkm.img",
@@ -27,7 +27,7 @@
     "build_method": "perf",
     "manifest_repo": "OnePlusOSS/kernel_manifest",
     "manifest_branch": "oneplus/sm8850",
-    "hmbird": true,
+    "hmbird": false,
     "extra_artifacts": [
       "dtbo.img",
       "system_dlkm.img",
@@ -45,7 +45,7 @@
     "build_method": "perf",
     "manifest_repo": "OnePlusOSS/kernel_manifest",
     "manifest_branch": "oneplus/sm8850",
-    "hmbird": true,
+    "hmbird": false,
     "extra_artifacts": [
       "dtbo.img",
       "system_dlkm.img",
@@ -63,7 +63,7 @@
     "build_method": "perf",
     "manifest_repo": "OnePlusOSS/kernel_manifest",
     "manifest_branch": "oneplus/sm8850",
-    "hmbird": true,
+    "hmbird": false,
     "extra_artifacts": [
       "dtbo.img",
       "system_dlkm.img",
@@ -81,7 +81,7 @@
     "build_method": "perf",
     "manifest_repo": "OnePlusOSS/kernel_manifest",
     "manifest_branch": "oneplus/sm8850",
-    "hmbird": true,
+    "hmbird": false,
     "extra_artifacts": [
       "dtbo.img",
       "system_dlkm.img",
